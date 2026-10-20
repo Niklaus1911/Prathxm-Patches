@@ -34,7 +34,18 @@ jobs:
       - name: Build
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./gradlew :patches:generatePatchesList :patches:buildAndroid --no-daemon
+        run: |
+          set -euo pipefail
+          ./gradlew :patches:buildAndroid --no-daemon
+          set -- patches/build/libs/*.mpp
+          test "$#" -eq 1 && test -f "$1"
+          MPP="$1"
+          cp "$MPP" "$RUNNER_TEMP/android-bundle.mpp"
+          # generatePatchesList depends on the plain JVM jar task, which can replace the
+          # Android DEX bundle at the same path. Generate metadata first, then restore the
+          # verified Android bundle for the release.
+          ./gradlew :patches:generatePatchesList --no-daemon
+          cp "$RUNNER_TEMP/android-bundle.mpp" "$MPP"
 
       - name: Check bundle
         id: bundle
