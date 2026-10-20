@@ -37,15 +37,9 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew :patches:buildAndroid --no-daemon
-          set -- patches/build/libs/*.mpp
-          test "$#" -eq 1 && test -f "$1"
-          MPP="$1"
-          cp "$MPP" "$RUNNER_TEMP/android-bundle.mpp"
-          # generatePatchesList depends on the plain JVM jar task, which can replace the
-          # Android DEX bundle at the same path. Generate metadata first, then restore the
-          # verified Android bundle for the release.
-          ./gradlew :patches:generatePatchesList --no-daemon
-          cp "$RUNNER_TEMP/android-bundle.mpp" "$MPP"
+          VERSION=$(python3 -c 'from pathlib import Path; import re; print(re.search(r"(?m)^version\s*=\s*(.+)$",Path("gradle.properties").read_text()).group(1).strip())')
+          jq --arg version "$VERSION" '.version = $version' patches-list.json > "$RUNNER_TEMP/patches-list.json"
+          mv "$RUNNER_TEMP/patches-list.json" patches-list.json
 
       - name: Check bundle
         id: bundle
