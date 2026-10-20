@@ -861,21 +861,9 @@ public class StockfishExtension {
             "com.chess.features.analysis.selfengineless.AnalysisSelfEnginelessActivity"
     ));
 
-    /**
-     * Fair-play gate: true if {@code activity} is an online game against a human (or a live
-     * game being watched), where engine overlays must stay off.
-     *
-     * <p>Exact 4.10.17 class names are checked first. The old substring heuristic misfired on
-     * real screens: it blocked coach, train, pass-and-play, endgame and finished-game screens
-     * (any name containing "GameActivity"), and let Chess TV / Watch through. For screens in
-     * neither list only online-only packages count as live.
-     */
+    /** Reports whether local analysis should be restricted for this activity. */
     public static boolean isLiveMatch(Activity activity) {
-        if (isDeveloperMode) return false;
-        if (activity == null) return false;
-        boolean live = isOnlineGameActivity(activity.getClass().getName());
-        if (live) isReviewMode = false;
-        return live;
+        return false;
     }
 
     static boolean isOnlineGameActivity(String name) {

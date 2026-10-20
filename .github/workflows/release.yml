@@ -2,81 +2,65 @@ name: Release
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - dev
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
-    name: Release
-    permissions:
-      contents: write
-      packages: write
-      id-token: write
-      attestations: write
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Java
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
 
-      - name: Cache Gradle
-        uses: burrunan/gradle-cache-action@v3
-
-      - name: Download Stockfish Binaries
-        run: ./.github/scripts/download_stockfish.sh
+      - name: Prepare engine resources
+        run: bash .github/scripts/download_stockfish.sh
 
       - name: Build
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./gradlew :patches:buildAndroid generatePatchesList clean
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./gradlew :patches:buildAndroid --no-daemon
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 'lts/*'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Release
-        uses: cycjimmy/semantic-release-action@v6
-        id: release
+      - name: Check bundle
+        id: bundle
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Attest
-        if: steps.release.outputs.new_release_published == 'true'
-        uses: actions/attest-build-provenance@v4
-        with:
-          subject-name: 'Morphe Patches ${{ steps.release.outputs.new_release_git_tag }}'
-          subject-path: patches/build/libs/patches-*.mpp
-
-      - name: Install database dependencies
+          GH_TOKEN: ${{ github.token }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y zstd
+          set -euo pipefail
+          set -- patches/build/libs/*.mpp
+          test "$#" -eq 1 && test -f "$1"
+          MPP="$1"
+          python3 -c 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; assert z.read("extensions/extension.mpe")[:4] == b"dex\n"; assert all(len(z.read(p)) > 1000000 for p in ["stockfish/arm64-v8a/stockfish", "stockfish/armeabi-v7a/stockfish"]); print("Bundle structure and CRCs verified")' "$MPP"
+          gh release download v1.18.1 --repo MorpheApp/morphe-desktop --pattern morphe-desktop-1.18.1-all.jar --dir "$RUNNER_TEMP"
+          python3 -c 'import hashlib,sys; assert hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest() == "1b506ab5f03d16a2f65026d5e0e1910d01fc1e2152f21eaeb44ed2f30856597b"' "$RUNNER_TEMP/morphe-desktop-1.18.1-all.jar"
+          java -jar "$RUNNER_TEMP/morphe-desktop-1.18.1-all.jar" list-patches --patches "$MPP" --out "$RUNNER_TEMP/patch-list.txt"
+          python3 -c 'import re,sys; text=open(sys.argv[1]).read(); names=re.findall(r"^Name: (.+)$",text,re.M); assert len(names)==8 and "Local Stockfish Analysis" in names; print("Official Morphe loader accepted all 8 patches")' "$RUNNER_TEMP/patch-list.txt"
+          printf 'path=%s\n' "$MPP" >> "$GITHUB_OUTPUT"
 
-      - name: Run database extraction script
-        run: |
-          python3 .github/scripts/extract_puzzles.py
-
-      - name: Upload databases to Database Release
+      - name: Publish release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          MPP: ${{ steps.bundle.outputs.path }}
         run: |
-          gh release view database || gh release create database --title "Lichess Offline Database" --notes "Pre-built Lichess offline puzzle database files."
-          gh release upload database lichess_offline_puzzles_all.csv.gz --clobber
-          gh release upload database lichess_offline_puzzles_500k.csv.gz --clobber
-          gh release upload database lichess_offline_puzzles_100k.csv.gz --clobber
-          gh release upload database lichess_offline_puzzles_50k.csv.gz --clobber
-          gh release upload database lichess_offline_puzzles_20k.csv.gz --clobber
+          set -euo pipefail
+          VERSION=$(python3 -c 'from pathlib import Path; import re; print(re.search(r"(?m)^version\s*=\s*(.+)$",Path("gradle.properties").read_text()).group(1).strip())')
+          TAG="v${VERSION}-build.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          sha256sum "$MPP" > "$RUNNER_TEMP/SHA256SUMS.txt"
+          gh release create "$TAG" "$MPP" "$RUNNER_TEMP/SHA256SUMS.txt" "$RUNNER_TEMP/patch-list.txt" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Patches ${VERSION}" --latest \
+            --notes "Built from fork commit ${GITHUB_SHA}. Bundle integrity and the official Morphe patch loader were checked. APK/device integration was not tested."

@@ -1,8 +1,6 @@
 name: Update Lichess Offline Database
 
 on:
-  schedule:
-    - cron: '0 0 1 * *' # Run on the first day of every month at midnight
   workflow_dispatch: # Enable manual triggers
 
 jobs:
