@@ -34,7 +34,7 @@ jobs:
       - name: Build
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./gradlew :patches:buildAndroid :patches:generatePatchesList --no-daemon
+        run: ./gradlew :patches:generatePatchesList :patches:buildAndroid --no-daemon
 
       - name: Check bundle
         id: bundle
