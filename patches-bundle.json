@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-10-20T12:25:06",
-  "description": "Online-enabled local build of Prathxm Patches.",
-  "download_url": "https://github.com/Niklaus1911/Prathxm-Patches/releases/download/v1.15.0-build.1.1/patches-1.15.0.mpp",
+  "created_at": "2026-10-20T13:09:01",
+  "description": "Patches 1.15.1",
+  "download_url": "https://github.com/Niklaus1911/Prathxm-Patches/releases/download/v1.15.1-build.5.1/patches-1.15.1.mpp",
   "signature_download_url": "",
-  "version": "1.15.0"
+  "version": "1.15.1"
 }
