@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -33,7 +34,7 @@ jobs:
       - name: Build
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: ./gradlew :patches:buildAndroid --no-daemon
+        run: ./gradlew :patches:buildAndroid :patches:generatePatchesList --no-daemon
 
       - name: Check bundle
         id: bundle
@@ -64,3 +65,14 @@ jobs:
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Patches ${VERSION}" --latest \
             --notes "Built from fork commit ${GITHUB_SHA}. Bundle integrity and the official Morphe patch loader were checked. APK/device integration was not tested."
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" > "$RUNNER_TEMP/release.json"
+          python3 .github/scripts/update_bundle_metadata.py \
+            --release-json "$RUNNER_TEMP/release.json" --bundle "$MPP" \
+            --repository "$GITHUB_REPOSITORY" --version "$VERSION"
+          git diff --exit-code "$GITHUB_SHA" -- README.md
+          gh auth setup-git
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add patches-bundle.json patches-list.json
+          git commit -m 'chore: update bundle metadata [skip ci]'
+          git push origin HEAD:main
